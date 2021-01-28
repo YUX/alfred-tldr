@@ -6,7 +6,8 @@ BINARY := bin/$(BIN_NAME)
 ASSETS_DIR := assets
 ASSETS := $(ASSETS_DIR)/* $(BINARY) README.md
 ARTIFACT_DIR := .artifact
-ARTIFACT_NAME := $(BIN_NAME).alfredworkflow
+ARTIFACT_AMD64_NAME := $(BIN_NAME).amd64.alfredworkflow
+ARTIFACT_ARM64_NAME := $(BIN_NAME).arm64.alfredworkflow
 
 CMD_PACKAGE_DIR := github.com/konoui/alfred-tldr/cmd
 LDFLAGS := -X '$(CMD_PACKAGE_DIR).version=$(VERSION)' -X '$(CMD_PACKAGE_DIR).revision=$(REVISION)'
@@ -31,24 +32,41 @@ lint:
 	@(if ! type golangci-lint >/dev/null 2>&1; then curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(GOLANGCI_LINT_VERSION) ;fi)
 	golangci-lint run ./...
 
-## Build macos binaries
-darwin:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build  -ldflags "$(LDFLAGS) -s -w" -o $(BINARY) $(SRC_DIR)
+## Install Binary and Assets to Workflow Directory
+install: build
+	@(cp $(ASSETS)  $(WORKFLOW_DIR)/)
 
 ## Run tests for my project
 test:
 	export alfred_workflow_data=$(shell mktemp -d); \
 	go test -v ./...
 
-## Install Binary and Assets to Workflow Directory
-install: build
-	@(cp $(ASSETS)  $(WORKFLOW_DIR)/)
+## Report coverage
+cover:
+	export alfred_workflow_data=$(shell mktemp -d); \
+	go test -coverprofile=cover.out ./...
+	go tool cover -html=cover.out -o cover.html
+
+
+## Build macos binaries
+amd64:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build  -ldflags "$(LDFLAGS) -s -w" -o $(BINARY) $(SRC_DIR)
+
+arm64:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS) -s -w" -o $(BINARY) $(SRC_DIR)
 
 ## Create workflow artifact
-package: darwin
+package-amd64: clean amd64
 	@(if [ ! -e $(ARTIFACT_DIR) ]; then mkdir $(ARTIFACT_DIR) ; fi)
 	@(cp $(ASSETS) $(ARTIFACT_DIR))
-	@(zip -j $(ARTIFACT_NAME) $(ARTIFACT_DIR)/*)
+	@(zip -j $(ARTIFACT_AMD64_NAME) $(ARTIFACT_DIR)/*)
+
+package-arm64: clean arm64
+	@(if [ ! -e $(ARTIFACT_DIR) ]; then mkdir $(ARTIFACT_DIR) ; fi)
+	@(cp $(ASSETS) $(ARTIFACT_DIR))
+	@(zip -j $(ARTIFACT_ARM64_NAME) $(ARTIFACT_DIR)/*)
+
+package: package-amd64 package-arm64
 
 ## GitHub Release and uploads artifacts
 release: package
@@ -59,13 +77,6 @@ release: package
 clean:
 	rm -f $(BIN_NAME)
 	rm -f $(ARTIFACT_DIR)/*
-
-
-## Report coverage
-cover:
-	export alfred_workflow_data=$(shell mktemp -d); \
-	go test -coverprofile=cover.out ./...
-	go tool cover -html=cover.out -o cover.html
 
 ## Show help
 help:
